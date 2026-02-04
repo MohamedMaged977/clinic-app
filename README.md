@@ -1,36 +1,91 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Clinic Booking System
 
-## Getting Started
+A multi-branch clinic booking system built with Next.js and Supabase. Supports **admin** (owner), **doctors**, and **receptionists** with role-based access.
 
-First, run the development server:
+## Features
+
+- **Admin**: Create and manage branches; create doctors (invite by email) and assign them to branches; assign staff roles and branches.
+- **Doctors**: Set weekly schedule per branch; view and manage appointments; mark slots as taken (book with patient).
+- **Receptionists**: Book appointments (branch, doctor, date, slot, patient); manage patients; view schedule.
+- **Patient history**: Each patient has a profile and full appointment history across branches.
+
+## Tech Stack
+
+- **Next.js 16** (App Router)
+- **Supabase**: PostgreSQL database, Auth, Row Level Security (RLS)
+- **Tailwind CSS**
+- **TypeScript**
+
+## Setup
+
+### 1. Create a Supabase project
+
+1. Go to [supabase.com](https://supabase.com) and create a new project.
+2. In **Settings → API**, copy the **Project URL** and **anon public** key.
+
+### 2. Environment variables
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.local.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Edit `.env.local` and set:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `NEXT_PUBLIC_SUPABASE_URL` = your Supabase project URL  
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` = your Supabase anon key  
+- `SUPABASE_SERVICE_ROLE_KEY` = your Supabase **service_role** key (from Settings → API). Required for admin “Create doctor” invites; keep secret and server-only.  
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 3. Run the database migration
 
-## Learn More
+In the Supabase Dashboard, open **SQL Editor** and run the contents of:
 
-To learn more about Next.js, take a look at the following resources:
+`supabase/migrations/20250204000001_initial_schema.sql`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+This creates: `branches`, `profiles`, `patients`, `doctor_schedules`, `appointments`, RLS policies, and a trigger that creates a profile when a user signs up. Then run (in order) any other migrations in `supabase/migrations/`, including `20250204000005_trigger_branch_from_metadata.sql` so that when the admin invites a doctor with a branch, the profile gets that branch_id.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 4. Create your first user (admin)
 
-## Deploy on Vercel
+1. Enable **Email** auth in Supabase: **Authentication → Providers → Email** (enable and optionally disable “Confirm email” for local dev).
+2. In **Authentication → Users**, click **Add user** and create a user with your email and password (or sign up via the app at `/login` if you’ve enabled signups).
+3. Make yourself admin: in **SQL Editor** run (replace with your email):
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```sql
+update public.profiles set role = 'admin', branch_id = null where email = 'your@email.com';
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### 5. Run the app
+
+```bash
+npm install
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). You’ll be redirected to `/login`. Sign in, then you’ll see the dashboard.
+
+## Usage
+
+1. **Admin**: Create branches (Branches → Add branch). Add staff via Supabase Auth (or invite), then assign **role** and **branch** in **Staff**.
+2. **Doctors**: Go to **My Schedule** (or dashboard) → **View schedule** for your profile, then set weekly availability per branch (day, start/end time, slot length).
+3. **Receptionist / Doctor**: **Book appointment** → choose branch, doctor, date, time slot, and patient. Patients can be added under **Patients** first.
+4. **Patient history**: Open **Patients** → click **History** on a patient to see all past and upcoming appointments.
+
+## Project structure
+
+- `app/` – Routes: `login`, `dashboard` (overview, branches, staff, appointments, patients), `dashboard/doctors/[id]/schedule`, `dashboard/appointments/new`, `dashboard/patients/new`, `dashboard/patients/[id]`.
+- `app/dashboard/_components/` – Shared UI: nav, branch/patient/schedule forms, book-appointment flow.
+- `lib/` – Supabase client/server, auth helpers, DB types, slot calculation.
+- `supabase/migrations/` – Single migration for schema and RLS.
+
+## Deployment
+
+- **Next.js**: Deploy to Vercel (or any Node host). Set the same env vars in the project settings.
+- **Supabase**: Hosted; no extra deployment. For production, enable email confirmation and configure redirect URLs in **Authentication → URL Configuration** (e.g. `https://yourdomain.com/auth/callback`).
+
+## Database choice
+
+**Supabase (PostgreSQL)** was chosen for:
+
+- One place for database + auth  
+- Row Level Security for branch/role-based access  
+- Free tier and simple deployment  
+- Good fit for multi-tenant (multi-branch) and relational data (branches, schedules, appointments, patients)
